@@ -7,7 +7,12 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": [".github/**/*.{yml,yaml}"]
+		"includes": [
+			"src/**/*.ts",
+			"tests/**/*.ts",
+			"*.{js,json}",
+			".github/**/*.{yml,yaml}"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -15,7 +20,7 @@
 	},
 	"linter": {
 		"enabled": true,
-		"includes": ["!release.config.js"],
+		"includes": ["**", "!release.config.js"],
 		"rules": {
 			"recommended": true
 		}

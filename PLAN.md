@@ -413,14 +413,14 @@ The only non-automatable concern: `description` quality (trigger hint vs. summar
 - [x] Implement `{file:./path}` file-reference resolver utility
 
 ### Phase 2: MCP Adapter
-- [ ] Implement `ClaudeAdapter` for MCP server sync
-- [ ] Transform: `mcp` → `mcpServers`, `"local"` → `"stdio"`, `"remote"` → `"http"`
-- [ ] Transform: command array → `command` string + `args` array
-- [ ] Transform: `environment` → `env`
-- [ ] Resolve `{env:VAR}` in values and headers at sync time
-- [ ] Skip servers with `enabled: false`
-- [ ] Skip + warn servers with `oauth` config (no Claude equivalent)
-- [ ] Implement safe read-merge-write to `~/.claude.json` (preserve non-MCP keys)
+- [x] Implement `ClaudeAdapter` for MCP server sync
+- [x] Transform: `mcp` → `mcpServers`, `"local"` → `"stdio"`, `"remote"` → `"http"`
+- [x] Transform: command array → `command` string + `args` array
+- [x] Transform: `environment` → `env`
+- [x] Resolve `{env:VAR}` in values and headers at sync time
+- [x] Skip servers with `enabled: false`
+- [x] Skip + warn servers with `oauth` config (no Claude equivalent)
+- [x] Implement safe read-merge-write to `~/.claude.json` (preserve non-MCP keys)
 
 ### Phase 3: Agent Adapter
 - [ ] Implement `ClaudeAgentAdapter`
