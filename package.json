@@ -1,0 +1,49 @@
+{
+	"name": "opencode-relay",
+	"version": "1.0.0",
+	"description": "Automatically relay OpenCode configurations to Claude Code and other AI agents.",
+	"keywords": [
+		"opencode",
+		"claude",
+		"mcp",
+		"ai",
+		"agent",
+		"relay",
+		"bridge"
+	],
+	"license": "MIT",
+	"author": "Jose Goncalves",
+	"type": "module",
+	"main": "index.js",
+	"scripts": {
+		"build": "tsc",
+		"test": "vitest run",
+		"prepare": "husky || true"
+	},
+	"lint-staged": {
+		"**/*.{ts,js,json}": [
+			"biome check --write"
+		]
+	},
+	"commitlint": {
+		"extends": [
+			"@commitlint/config-conventional"
+		]
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.7",
+		"@commitlint/cli": "^20.4.4",
+		"@commitlint/config-conventional": "^20.4.4",
+		"@semantic-release/changelog": "^6.0.3",
+		"@semantic-release/git": "^10.0.1",
+		"@tsconfig/node24": "^24.0.4",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.3.3",
+		"semantic-release": "^24.2.9",
+		"typescript": "^5.9.3",
+		"vitest": "^4.1.0"
+	},
+	"dependencies": {
+		"jsonc-parser": "^3.3.1"
+	}
+}
