@@ -437,12 +437,12 @@ The only non-automatable concern: `description` quality (trigger hint vs. summar
 - [x] Handle deletion: remove target `.md` when agent removed from source
 
 ### Phase 4: Skills Adapter
-- [ ] Implement `ClaudeSkillAdapter`
-- [ ] Watch **only** `~/.config/opencode/skills/` (OpenCode-exclusive path)
-- [ ] Skip `~/.claude/skills/` as source — already natively shared with Claude Code
-- [ ] Copy changed `SKILL.md` files to `~/.claude/skills/<name>/SKILL.md` (pure file sync)
-- [ ] Warn on duplicate skill names across sync locations
-- [ ] Handle deletions: remove corresponding file in target
+- [x] Implement `ClaudeSkillAdapter`
+- [x] Watch **only** `~/.config/opencode/skills/` (OpenCode-exclusive path)
+- [x] Skip `~/.claude/skills/` as source — already natively shared with Claude Code
+- [x] Copy changed `SKILL.md` files to `~/.claude/skills/<name>/SKILL.md` (pure file sync)
+- [x] Warn on duplicate skill names across sync locations
+- [x] Handle deletions: remove corresponding file in target
 
 ### Phase 5: Core Engine (Watcher)
 - [ ] Implement `SyncEngine` class
