@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-
+import { CONFIG_DIR } from "../constants/claude.js";
 import type { ProviderAdapter } from "../interfaces/ProviderAdapter.js";
 import type {
 	ClaudeConfig,
@@ -17,7 +17,7 @@ import type {
 import { resolveEnvRefs } from "../utils/envResolver.js";
 import { fromHome } from "../utils/pathResolver.js";
 
-const TARGET_PATH = fromHome(".claude.json");
+const TARGET_PATH = fromHome(CONFIG_DIR);
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 

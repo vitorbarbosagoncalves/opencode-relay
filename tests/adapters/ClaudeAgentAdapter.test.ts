@@ -1,0 +1,284 @@
+import { describe, expect, it } from "vitest";
+
+import {
+	buildFrontmatter,
+	mapModel,
+	mapTools,
+	parseFrontmatter,
+	renderAgentMd,
+	serializeFrontmatter,
+	toKebabCase,
+} from "../../src/adapters/ClaudeAgentAdapter.js";
+
+// ── toKebabCase ───────────────────────────────────────────────────────────────
+
+describe(toKebabCase, () => {
+	it("lowercases a simple name", () => {
+		expect(toKebabCase("developer")).toBe("developer");
+	});
+
+	it("converts camelCase to kebab-case", () => {
+		expect(toKebabCase("codeReviewer")).toBe("code-reviewer");
+	});
+
+	it("converts snake_case to kebab-case", () => {
+		expect(toKebabCase("code_reviewer")).toBe("code-reviewer");
+	});
+
+	it("converts spaces to hyphens", () => {
+		expect(toKebabCase("code reviewer")).toBe("code-reviewer");
+	});
+
+	it("strips leading hyphen from PascalCase input", () => {
+		expect(toKebabCase("CodeReviewer")).toBe("code-reviewer");
+	});
+});
+
+// ── mapModel ──────────────────────────────────────────────────────────────────
+
+describe(mapModel, () => {
+	it("returns undefined with no warning when model is absent", () => {
+		expect(mapModel(undefined)).toEqual({ value: undefined, warning: null });
+	});
+
+	it("maps anthropic/claude-opus-4-6 to opus", () => {
+		expect(mapModel("anthropic/claude-opus-4-6")).toEqual({
+			value: "opus",
+			warning: null,
+		});
+	});
+
+	it("maps anthropic/claude-sonnet-4-6 to sonnet", () => {
+		expect(mapModel("anthropic/claude-sonnet-4-6")).toEqual({
+			value: "sonnet",
+			warning: null,
+		});
+	});
+
+	it("maps anthropic/claude-haiku-4-5 to haiku", () => {
+		expect(mapModel("anthropic/claude-haiku-4-5")).toEqual({
+			value: "haiku",
+			warning: null,
+		});
+	});
+
+	it("strips anthropic/ prefix for unlisted Anthropic models", () => {
+		expect(mapModel("anthropic/claude-3-5-sonnet")).toEqual({
+			value: "claude-3-5-sonnet",
+			warning: null,
+		});
+	});
+
+	it("falls back to inherit and warns for non-Anthropic models", () => {
+		const result = mapModel("openrouter/meta/llama-3");
+		expect(result.value).toBe("inherit");
+		expect(result.warning).toMatch(/not an Anthropic model/);
+		expect(result.warning).toMatch(/openrouter\/meta\/llama-3/);
+	});
+});
+
+// ── mapTools ──────────────────────────────────────────────────────────────────
+
+describe(mapTools, () => {
+	it("returns undefined when tools is absent (inherit all)", () => {
+		expect(mapTools(undefined)).toEqual({ value: undefined });
+	});
+
+	it("returns undefined when all tools are enabled (inherit all)", () => {
+		expect(
+			mapTools({ read: true, write: true, edit: true, bash: true }),
+		).toEqual({ value: undefined });
+	});
+
+	it("returns empty string when all tools are disabled", () => {
+		expect(
+			mapTools({ read: false, write: false, edit: false, bash: false }),
+		).toEqual({ value: "" });
+	});
+
+	it("returns PascalCase comma-string for a subset of enabled tools", () => {
+		expect(
+			mapTools({ read: true, write: false, edit: true, bash: false }),
+		).toEqual({ value: "Read, Edit" });
+	});
+
+	it("maps write → Write, bash → Bash", () => {
+		expect(mapTools({ write: true, bash: true })).toEqual({
+			value: "Write, Bash",
+		});
+	});
+});
+
+// ── parseFrontmatter ──────────────────────────────────────────────────────────
+
+describe(parseFrontmatter, () => {
+	it("parses scalar string fields", () => {
+		const md = `---\nname: dev\ndescription: A developer agent\n---\n\nbody text`;
+		const { frontmatter, body } = parseFrontmatter(md);
+		expect(frontmatter.name).toBe("dev");
+		expect(frontmatter.description).toBe("A developer agent");
+		expect(body.trim()).toBe("body text");
+	});
+
+	it("parses boolean and number scalars", () => {
+		const md = `---\nbackground: true\nmaxTurns: 10\n---\n\n`;
+		const { frontmatter } = parseFrontmatter(md);
+		expect(frontmatter.background).toBe(true);
+		expect(frontmatter.maxTurns).toBe(10);
+	});
+
+	it("parses YAML list fields", () => {
+		const md = `---\nskills:\n  - git-release\n  - deploy\n---\n\n`;
+		const { frontmatter } = parseFrontmatter(md);
+		expect(frontmatter.skills).toEqual(["git-release", "deploy"]);
+	});
+
+	it("parses nested object fields (OpenCode tools format)", () => {
+		const md = `---\ntools:\n  write: false\n  bash: true\n---\n\n`;
+		const { frontmatter } = parseFrontmatter(md);
+		expect(frontmatter.tools).toEqual({ write: false, bash: true });
+	});
+
+	it("returns empty frontmatter and full string as body when no fence found", () => {
+		const plain = "no frontmatter here";
+		const { frontmatter, body } = parseFrontmatter(plain);
+		expect(frontmatter).toEqual({});
+		expect(body).toBe(plain);
+	});
+
+	it("handles quoted empty string for tools", () => {
+		const md = `---\ntools: ""\n---\n\n`;
+		const { frontmatter } = parseFrontmatter(md);
+		expect(frontmatter.tools).toBe("");
+	});
+});
+
+// ── serializeFrontmatter ──────────────────────────────────────────────────────
+
+describe(serializeFrontmatter, () => {
+	it("serializes scalar fields", () => {
+		const result = serializeFrontmatter({ name: "dev", model: "sonnet" });
+		expect(result).toContain("name: dev");
+		expect(result).toContain("model: sonnet");
+	});
+
+	it("serializes array fields as YAML list", () => {
+		const result = serializeFrontmatter({ skills: ["git", "deploy"] });
+		expect(result).toContain("skills:");
+		expect(result).toContain("  - git");
+		expect(result).toContain("  - deploy");
+	});
+
+	it("serializes empty string as quoted value", () => {
+		const result = serializeFrontmatter({ tools: "" });
+		expect(result).toContain('tools: ""');
+	});
+
+	it("omits undefined and null fields", () => {
+		const result = serializeFrontmatter({ name: "dev", model: undefined });
+		expect(result).not.toContain("model");
+	});
+});
+
+// ── renderAgentMd ─────────────────────────────────────────────────────────────
+
+describe(renderAgentMd, () => {
+	it("wraps frontmatter in --- fences with a blank line before body", () => {
+		const result = renderAgentMd({ name: "dev", description: "A dev" }, "body");
+		expect(result).toMatch(/^---\n/);
+		expect(result).toContain("\n---\n\nbody\n");
+	});
+
+	it("trims trailing whitespace from body", () => {
+		const result = renderAgentMd(
+			{ name: "x", description: "" },
+			"  body  \n\n",
+		);
+		expect(result.endsWith("body\n")).toBe(true);
+	});
+});
+
+// ── buildFrontmatter ──────────────────────────────────────────────────────────
+
+describe(buildFrontmatter, () => {
+	it("builds minimal frontmatter from a JSON agent", () => {
+		const { frontmatter, warnings } = buildFrontmatter(
+			"developer",
+			{
+				description: "A full-stack developer",
+				model: "anthropic/claude-sonnet-4-6",
+				tools: { read: true, write: true },
+			},
+			{},
+		);
+		expect(frontmatter.name).toBe("developer");
+		expect(frontmatter.description).toBe("A full-stack developer");
+		expect(frontmatter.model).toBe("sonnet");
+		expect(frontmatter.tools).toBe("Read, Write"); // explicit subset → emit
+		expect(warnings).toHaveLength(0);
+	});
+
+	it("warns and uses empty description when missing", () => {
+		const { frontmatter, warnings } = buildFrontmatter("bot", {}, {});
+		expect(frontmatter.description).toBe("");
+		expect(warnings.some((w) => w.includes("no description"))).toBe(true);
+	});
+
+	it("warns and drops temperature", () => {
+		const { warnings } = buildFrontmatter(
+			"bot",
+			{ description: "x", temperature: 0.5 },
+			{},
+		);
+		expect(warnings.some((w) => w.includes("temperature"))).toBe(true);
+		expect(warnings.some((w) => w.includes("dropped"))).toBe(true);
+	});
+
+	it("warns for non-Anthropic model and sets inherit", () => {
+		const { frontmatter, warnings } = buildFrontmatter(
+			"bot",
+			{ description: "x", model: "openrouter/gpt-4" },
+			{},
+		);
+		expect(frontmatter.model).toBe("inherit");
+		expect(warnings.some((w) => w.includes("not an Anthropic model"))).toBe(
+			true,
+		);
+	});
+
+	it("preserves Claude-only fields from existing target", () => {
+		const existing = {
+			permissionMode: "acceptEdits",
+			maxTurns: 5,
+			skills: ["git-release"],
+			someOtherField: "ignored",
+		};
+		const { frontmatter } = buildFrontmatter(
+			"bot",
+			{ description: "x" },
+			existing,
+		);
+		expect(frontmatter.permissionMode).toBe("acceptEdits");
+		expect(frontmatter.maxTurns).toBe(5);
+		expect(frontmatter.skills).toEqual(["git-release"]);
+		expect(frontmatter.someOtherField).toBeUndefined();
+	});
+
+	it("includes tools string when subset of tools enabled", () => {
+		const { frontmatter } = buildFrontmatter(
+			"bot",
+			{ description: "x", tools: { read: true, write: false, bash: false } },
+			{},
+		);
+		expect(frontmatter.tools).toBe("Read");
+	});
+
+	it("sets tools to empty string when all disabled", () => {
+		const { frontmatter } = buildFrontmatter(
+			"bot",
+			{ description: "x", tools: { read: false, write: false } },
+			{},
+		);
+		expect(frontmatter.tools).toBe("");
+	});
+});
