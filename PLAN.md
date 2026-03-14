@@ -423,18 +423,18 @@ The only non-automatable concern: `description` quality (trigger hint vs. summar
 - [x] Implement safe read-merge-write to `~/.claude.json` (preserve non-MCP keys)
 
 ### Phase 3: Agent Adapter
-- [ ] Implement `ClaudeAgentAdapter`
-- [ ] Watch both `opencode.jsonc` (`agent` key) AND `~/.config/opencode/agents/*.md`
-- [ ] For JSON agents: resolve `{file:./path}` prompt refs OR use inline string as body
-- [ ] For MD agents: read frontmatter + body directly
-- [ ] Route `mode: "subagent"` → `~/.claude/skills/<name>/SKILL.md`
-- [ ] Route `mode: "primary"` / absent → `~/.claude/agents/<name>.md`
-- [ ] Ensure `description` exists; warn if absent (required by Claude Code)
-- [ ] Map `model`: `anthropic/X` → strip prefix + alias; non-Anthropic → `inherit` + warn
-- [ ] Map `tools` object: filter `true` → PascalCase → join `, `; omit if all enabled; `""` if all disabled
-- [ ] Drop `temperature` (log warning); drop `default_agent` (log info)
-- [ ] Preserve existing Claude-only fields (`skills`, `permissionMode`, etc.) on non-destructive merge
-- [ ] Handle deletion: remove target `.md` when agent removed from source
+- [x] Implement `ClaudeAgentAdapter`
+- [x] Watch both `opencode.jsonc` (`agent` key) AND `~/.config/opencode/agents/*.md`
+- [x] For JSON agents: resolve `{file:./path}` prompt refs OR use inline string as body
+- [x] For MD agents: read frontmatter + body directly
+- [x] Route `mode: "subagent"` → `~/.claude/skills/<name>/SKILL.md`
+- [x] Route `mode: "primary"` / absent → `~/.claude/agents/<name>.md`
+- [x] Ensure `description` exists; warn if absent (required by Claude Code)
+- [x] Map `model`: `anthropic/X` → strip prefix + alias; non-Anthropic → `inherit` + warn
+- [x] Map `tools` object: filter `true` → PascalCase → join `, `; omit if all enabled; `""` if all disabled
+- [x] Drop `temperature` (log warning); drop `default_agent` (log info)
+- [x] Preserve existing Claude-only fields (`skills`, `permissionMode`, etc.) on non-destructive merge
+- [x] Handle deletion: remove target `.md` when agent removed from source
 
 ### Phase 4: Skills Adapter
 - [ ] Implement `ClaudeSkillAdapter`

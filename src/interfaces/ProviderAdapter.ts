@@ -10,7 +10,7 @@ export interface ProviderAdapter<T> {
 	 * Read the current state of the target config file.
 	 * Returns the parsed config, or a sensible empty default if the file does not exist.
 	 */
-	readTarget(): Promise<T>;
+	readTarget(targetName?: string): Promise<T>;
 
 	/**
 	 * Translate the relevant slice of the OpenCode config into the provider's schema
