@@ -56,6 +56,7 @@ export function toKebabCase(name: string): string {
 	return name
 		.replace(/([A-Z])/g, (c) => `-${c.toLowerCase()}`)
 		.replace(/[\s_]+/g, "-")
+		.replace(/-+/g, "-")
 		.replace(/^-/, "")
 		.toLowerCase();
 }
@@ -321,7 +322,7 @@ async function processJsonAgent(
 	};
 }
 
-async function processMdAgent(
+export async function processMdAgent(
 	rawName: string,
 	sourceContent: string,
 	existingContent: string,
@@ -331,8 +332,9 @@ async function processMdAgent(
 	isSkill: boolean;
 	warnings: string[];
 }> {
-	const name = toKebabCase(rawName);
 	const { frontmatter: sourceFm, body } = parseFrontmatter(sourceContent);
+	// Frontmatter `name:` takes precedence over filename when present.
+	const name = toKebabCase((sourceFm.name as string | undefined) ?? rawName);
 	const { frontmatter: existing } = parseFrontmatter(existingContent);
 
 	const isSkill = sourceFm.mode === "subagent";
@@ -504,18 +506,22 @@ export class ClaudeAgentAdapter implements ProviderAdapter<string> {
 		const mdAgents = await readOpenCodeMdAgents();
 
 		for (const { name: rawName, content: sourceContent } of mdAgents) {
-			const name = toKebabCase(rawName);
+			// Pre-parse frontmatter to resolve the effective output name before
+			// checking processedNames and reading the existing target file.
+			const { frontmatter: sourceFm } = parseFrontmatter(sourceContent);
+			const outputName = toKebabCase(
+				(sourceFm.name as string | undefined) ?? rawName,
+			);
+			const isSkill = sourceFm.mode === "subagent";
 
-			if (processedNames.has(name)) {
+			if (processedNames.has(outputName)) {
 				console.warn(
-					`[relay:agent] Agent "${name}" defined in both opencode.jsonc and MD file — JSON entry takes precedence`,
+					`[relay:agent] Agent "${outputName}" defined in both opencode.jsonc and MD file — JSON entry takes precedence`,
 				);
 				continue;
 			}
 
-			const { frontmatter: sourceFm } = parseFrontmatter(sourceContent);
-			const isSkill = sourceFm.mode === "subagent";
-			const existingContent = await readExistingTarget(name, isSkill);
+			const existingContent = await readExistingTarget(outputName, isSkill);
 			const result = await processMdAgent(
 				rawName,
 				sourceContent,
@@ -524,14 +530,14 @@ export class ClaudeAgentAdapter implements ProviderAdapter<string> {
 
 			for (const w of result.warnings) console.warn(`[relay:agent] ${w}`);
 
-			if (isSkill) {
-				await writeSkillFile(name, result.content);
-				newSkills.push(name);
+			if (result.isSkill) {
+				await writeSkillFile(result.name, result.content);
+				newSkills.push(result.name);
 			} else {
-				await writeAgentFile(name, result.content);
-				newAgents.push(name);
+				await writeAgentFile(result.name, result.content);
+				newAgents.push(result.name);
 			}
-			processedNames.add(name);
+			processedNames.add(result.name);
 		}
 
 		// ── Deletion ─────────────────────────────────────────────────────────────

@@ -1,10 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Mock must be declared before any import that uses node:fs/promises.
+vi.mock("node:fs/promises", () => ({
+	mkdir: vi.fn().mockResolvedValue(undefined),
+	readdir: vi.fn().mockResolvedValue([]),
+	readFile: vi
+		.fn()
+		.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" })),
+	rm: vi.fn().mockResolvedValue(undefined),
+	writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import {
 	buildFrontmatter,
+	ClaudeAgentAdapter,
 	mapModel,
 	mapTools,
 	parseFrontmatter,
+	processMdAgent,
 	renderAgentMd,
 	serializeFrontmatter,
 	toKebabCase,
@@ -31,6 +45,10 @@ describe(toKebabCase, () => {
 
 	it("strips leading hyphen from PascalCase input", () => {
 		expect(toKebabCase("CodeReviewer")).toBe("code-reviewer");
+	});
+
+	it("collapses repeated separators from mixed underscores and spaces", () => {
+		expect(toKebabCase("code__review  tool")).toBe("code-review-tool");
 	});
 });
 
@@ -280,5 +298,47 @@ describe(buildFrontmatter, () => {
 			{},
 		);
 		expect(frontmatter.tools).toBe("");
+	});
+});
+
+// ── processMdAgent ────────────────────────────────────────────────────────────
+
+describe(processMdAgent, () => {
+	it("uses frontmatter name: as output name instead of the filename", async () => {
+		const source = "---\nname: custom-agent\ndescription: x\n---\nbody text";
+		const result = await processMdAgent("my_filename", source, "");
+		expect(result.name).toBe("custom-agent");
+	});
+});
+
+// ── ClaudeAgentAdapter.sync — MD name collision ───────────────────────────────
+
+describe(ClaudeAgentAdapter, () => {
+	afterEach(() => vi.clearAllMocks());
+
+	it("skips MD agent whose frontmatter name: collides with a JSON-defined agent", async () => {
+		// MD file "reviewer.md" declares name: code-reviewer in its frontmatter,
+		// matching the JSON agent "code_reviewer" — it must be skipped.
+		vi.mocked(readdir).mockResolvedValue(["reviewer.md"] as never);
+		vi.mocked(readFile).mockImplementation(async (path) => {
+			if (String(path).endsWith("reviewer.md")) {
+				return "---\nname: code-reviewer\ndescription: from md\n---\nbody";
+			}
+			throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+		});
+
+		const adapter = new ClaudeAgentAdapter();
+		await adapter.sync({
+			agent: { code_reviewer: { description: "from json" } },
+		} as never);
+
+		// Only the JSON agent's .md and the manifest (.json) should be written —
+		// the MD agent must have been skipped entirely.
+		const writtenPaths = vi
+			.mocked(writeFile)
+			.mock.calls.map((c) => String(c[0]));
+		const agentWrites = writtenPaths.filter((p) => p.endsWith(".md"));
+		expect(agentWrites).toHaveLength(1);
+		expect(agentWrites[0]).toMatch(/code-reviewer\.md$/);
 	});
 });

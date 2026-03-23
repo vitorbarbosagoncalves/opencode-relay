@@ -202,7 +202,7 @@ describe(transformMcpServers, () => {
 		expect(Object.keys(servers)).toHaveLength(0);
 	});
 
-	it("skips OAuth servers and emits a warning", () => {
+	it("converts OAuth servers to http type, dropping oauth credentials", () => {
 		const { servers, warnings } = transformMcpServers({
 			"oauth-tool": {
 				type: "remote",
@@ -210,9 +210,11 @@ describe(transformMcpServers, () => {
 				oauth: { clientId: "abc", clientSecret: "xyz" },
 			},
 		});
-		expect(Object.keys(servers)).toHaveLength(0);
-		expect(warnings[0]).toMatch(/oauth-tool/);
-		expect(warnings[0]).toMatch(/OAuth/);
+		expect(servers["oauth-tool"]).toEqual({
+			type: "http",
+			url: "https://mcp.figma.com/mcp",
+		});
+		expect(warnings).toHaveLength(0);
 	});
 
 	it("returns an empty result for an empty input", () => {

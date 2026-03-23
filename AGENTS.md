@@ -44,7 +44,7 @@ Lightweight Node.js daemon that watches `~/.config/opencode/opencode.jsonc` and 
 | `environment: {}` | `env: {}` |
 | `{env:VAR}` in values | resolve `process.env[VAR]` at sync time |
 | `enabled: false` | omit server entirely |
-| `oauth: {...}` | **not supported** — skip + warn |
+| `oauth: {...}` | **drop** — convert as plain `http`; Claude manages auth |
 
 ### Agents (`agent` key + `~/.config/opencode/agents/*.md` → `~/.claude/agents/`)
 | OpenCode | Claude Code |

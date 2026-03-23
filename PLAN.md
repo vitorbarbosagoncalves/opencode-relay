@@ -445,15 +445,15 @@ The only non-automatable concern: `description` quality (trigger hint vs. summar
 - [x] Handle deletions: remove corresponding file in target
 
 ### Phase 5: Core Engine (Watcher)
-- [ ] Implement `SyncEngine` class
-- [ ] Integrate chokidar watching `opencode.jsonc` + `prompts/` + `skills/` dirs
-- [ ] Add debouncer (500ms) to prevent rapid re-triggers on file saves
-- [ ] Orchestrate all three adapters on relevant file changes
+- [x] Implement `SyncEngine` class
+- [x] Integrate chokidar watching `opencode.jsonc` + `agents/` + `skills/` dirs
+- [x] Add debouncer (500ms) to prevent rapid re-triggers on file saves
+- [x] Orchestrate all three adapters on relevant file changes
 
 ### Phase 6: CLI Entry & Execution
-- [ ] Create `index.ts` to wire up Engine and all Adapters
-- [ ] Add npm scripts: `dev`, `build`, `start`
-- [ ] Test cross-platform compatibility
+- [x] Create `index.ts` to wire up Engine and all Adapters
+- [x] Add npm scripts: `dev`, `build`, `start`
+- [x] Test cross-platform compatibility
 
 ---
 
