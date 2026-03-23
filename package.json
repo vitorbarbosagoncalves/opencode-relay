@@ -23,6 +23,8 @@
 		"dev": "tsx src/index.ts",
 		"start": "node dist/index.mjs",
 		"test": "vitest run",
+		"install-daemon": "tsx scripts/daemon.ts install",
+		"uninstall-daemon": "tsx scripts/daemon.ts uninstall",
 		"prepare": "husky || true"
 	},
 	"lint-staged": {
