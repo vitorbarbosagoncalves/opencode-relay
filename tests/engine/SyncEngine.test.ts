@@ -93,4 +93,19 @@ describe(SyncEngine, () => {
 		const engine = new SyncEngine([], tmpConfig);
 		await expect(engine.stop()).resolves.toBeUndefined();
 	});
+
+	it("continues running and calls remaining adapters when one adapter rejects", async () => {
+		const syncA = vi.fn().mockRejectedValue(new Error("adapter failure"));
+		const syncB = vi.fn().mockResolvedValue(undefined);
+		const engine = new SyncEngine(
+			[{ sync: syncA }, { sync: syncB }],
+			tmpConfig,
+		);
+
+		await expect(engine.start()).resolves.toBeUndefined();
+		await engine.stop();
+
+		expect(syncA).toHaveBeenCalledOnce();
+		expect(syncB).toHaveBeenCalledOnce();
+	});
 });

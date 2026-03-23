@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import chokidar, { type FSWatcher } from "chokidar";
 import { type ParseError, parse, printParseErrorCode } from "jsonc-parser";
@@ -10,7 +11,6 @@ import { fromHome } from "../utils/pathResolver.js";
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
 const OPENCODE_CONFIG = fromHome(".config/opencode/opencode.jsonc");
-const OPENCODE_DIR = fromHome(".config/opencode");
 
 const DEBOUNCE_MS = 500;
 
@@ -55,6 +55,8 @@ export class SyncEngine {
 	readonly #configPath: string;
 	#watcher: FSWatcher | null = null;
 	#debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	#syncing = false;
+	#syncQueued = false;
 
 	constructor(adapters: Syncable[], configPath: string = OPENCODE_CONFIG) {
 		this.#adapters = adapters;
@@ -68,7 +70,7 @@ export class SyncEngine {
 	async start(): Promise<void> {
 		await this.#runSync();
 
-		this.#watcher = chokidar.watch(OPENCODE_DIR, {
+		this.#watcher = chokidar.watch(dirname(this.#configPath), {
 			ignoreInitial: true,
 			persistent: true,
 			// usePolling is not needed on macOS/Linux with native FSEvents/inotify,
@@ -105,19 +107,40 @@ export class SyncEngine {
 	}
 
 	async #runSync(): Promise<void> {
-		const { data: source, error } = await readConfig(this.#configPath);
-
-		if (error) {
-			console.error(`[relay] ${error}`);
+		if (this.#syncing) {
+			this.#syncQueued = true;
 			return;
 		}
 
-		if (source == null) {
-			console.error(`[relay] Couldn't load: ${this.#configPath}`);
-			return;
-		}
+		this.#syncing = true;
+		try {
+			const { data: source, error } = await readConfig(this.#configPath);
 
-		await Promise.all(this.#adapters.map((adapter) => adapter.sync(source)));
-		console.info("[relay] Sync complete.");
+			if (error) {
+				console.error(`[relay] ${error}`);
+				return;
+			}
+
+			if (source == null) {
+				console.error(`[relay] Couldn't load: ${this.#configPath}`);
+				return;
+			}
+
+			const results = await Promise.allSettled(
+				this.#adapters.map((adapter) => adapter.sync(source)),
+			);
+			for (const result of results) {
+				if (result.status === "rejected") {
+					console.error("[relay] Adapter error:", result.reason);
+				}
+			}
+			console.info("[relay] Sync complete.");
+		} finally {
+			this.#syncing = false;
+			if (this.#syncQueued) {
+				this.#syncQueued = false;
+				await this.#runSync();
+			}
+		}
 	}
 }

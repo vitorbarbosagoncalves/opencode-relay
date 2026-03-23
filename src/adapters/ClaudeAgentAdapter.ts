@@ -322,7 +322,7 @@ async function processJsonAgent(
 	};
 }
 
-async function processMdAgent(
+export async function processMdAgent(
 	rawName: string,
 	sourceContent: string,
 	existingContent: string,
