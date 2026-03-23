@@ -14,9 +14,14 @@
 	"license": "MIT",
 	"author": "Jose Goncalves",
 	"type": "module",
-	"main": "index.js",
+	"main": "dist/index.js",
+	"bin": {
+		"opencode-relay": "dist/index.js"
+	},
 	"scripts": {
 		"build": "tsc",
+		"dev": "tsx src/index.ts",
+		"start": "node dist/index.js",
 		"test": "vitest run",
 		"prepare": "husky || true"
 	},
@@ -40,10 +45,12 @@
 		"husky": "^9.1.7",
 		"lint-staged": "^16.4.0",
 		"semantic-release": "^25.0.3",
+		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
 		"vitest": "^4.1.0"
 	},
 	"dependencies": {
+		"chokidar": "^5.0.0",
 		"jsonc-parser": "^3.3.1"
 	}
 }

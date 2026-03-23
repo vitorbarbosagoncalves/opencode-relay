@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { CONFIG_DIR } from "../constants/claude.js";
+import { CONFIG } from "../constants/claude.js";
 import type { ProviderAdapter } from "../interfaces/ProviderAdapter.js";
 import type {
 	ClaudeConfig,
@@ -17,7 +17,7 @@ import type {
 import { resolveEnvRefs } from "../utils/envResolver.js";
 import { fromHome } from "../utils/pathResolver.js";
 
-const TARGET_PATH = fromHome(CONFIG_DIR);
+const TARGET_PATH = fromHome(CONFIG);
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -116,16 +116,6 @@ export function transformMcpServers(mcp: Record<string, OpenCodeMcpServer>): {
 			}
 
 			// remote
-			if (server.oauth) {
-				return {
-					...acc,
-					warnings: [
-						...acc.warnings,
-						`MCP server "${name}" uses OAuth — not supported by Claude Code; skipping`,
-					],
-				};
-			}
-
 			const result = transformRemoteServer(server);
 			if (!result) return acc;
 			return {
