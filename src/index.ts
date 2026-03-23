@@ -1,3 +1,5 @@
+process.title = "opencode-relay";
+
 import { ClaudeAgentAdapter } from "./adapters/ClaudeAgentAdapter.js";
 import { ClaudeMcpAdapter } from "./adapters/ClaudeMcpAdapter.js";
 import { ClaudeSkillAdapter } from "./adapters/ClaudeSkillAdapter.js";
