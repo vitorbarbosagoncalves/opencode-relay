@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readConfig, SyncEngine } from "../../src/engine/SyncEngine.js";
 
