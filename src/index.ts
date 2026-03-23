@@ -15,7 +15,12 @@ async function main(): Promise<void> {
 	for (const signal of ["SIGINT", "SIGTERM"] as const) {
 		process.on(signal, () => {
 			console.info(`\n[relay] ${signal} received — shutting down`);
-			engine.stop().then(() => process.exit(0));
+			engine.stop()
+				.then(() => process.exit(0))
+				.catch((err: unknown) => {
+					console.error("[relay] Error during shutdown:", err);
+					process.exit(1);
+				});
 		});
 	}
 
