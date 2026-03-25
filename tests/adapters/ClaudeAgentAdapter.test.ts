@@ -8,10 +8,13 @@ vi.mock("node:fs/promises", () => ({
 		.fn()
 		.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" })),
 	rm: vi.fn().mockResolvedValue(undefined),
+	stat: vi
+		.fn()
+		.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" })),
 	writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
 	buildFrontmatter,
 	ClaudeAgentAdapter,
@@ -340,5 +343,108 @@ describe(ClaudeAgentAdapter, () => {
 		const agentWrites = writtenPaths.filter((p) => p.endsWith(".md"));
 		expect(agentWrites).toHaveLength(1);
 		expect(agentWrites[0]).toMatch(/code-reviewer\.md$/);
+	});
+
+	it("does not delete a manifest agent when its MD source file still exists", async () => {
+		// "foo" was previously synced as an agent (present in manifest).
+		// It has been removed from opencode.jsonc but foo.md still exists in the
+		// OpenCode agents directory (possibly with a changed role). The relay must
+		// not delete ~/.claude/agents/foo.md — the MD processing will handle it.
+		vi.mocked(readdir).mockResolvedValue([] as never); // MD dir returns nothing this cycle
+		vi.mocked(readFile).mockImplementation(async (path) => {
+			if (String(path).endsWith(".relay-manifest.json")) {
+				return JSON.stringify({ agents: ["foo"], skills: [] });
+			}
+			throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+		});
+		// stat succeeds for foo.md — the source file exists
+		vi.mocked(stat).mockImplementation(async (path) => {
+			if (String(path).endsWith("foo.md")) return {} as never;
+			throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+		});
+
+		const adapter = new ClaudeAgentAdapter();
+		await adapter.sync({} as never);
+
+		expect(vi.mocked(rm)).not.toHaveBeenCalledWith(
+			expect.stringMatching(/foo\.md$/),
+			expect.anything(),
+		);
+	});
+
+	it("deletes a manifest agent when its MD source file is gone", async () => {
+		// "bar" was previously synced as an agent (present in manifest).
+		// It has been removed from opencode.jsonc and no MD file exists for it —
+		// the relay must delete ~/.claude/agents/bar.md.
+		vi.mocked(readdir).mockResolvedValue([] as never);
+		vi.mocked(readFile).mockImplementation(async (path) => {
+			if (String(path).endsWith(".relay-manifest.json")) {
+				return JSON.stringify({ agents: ["bar"], skills: [] });
+			}
+			throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+		});
+		// stat fails for all files — no MD source exists
+		vi.mocked(stat).mockRejectedValue(
+			Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+		);
+
+		const adapter = new ClaudeAgentAdapter();
+		await adapter.sync({} as never);
+
+		expect(vi.mocked(rm)).toHaveBeenCalledWith(
+			expect.stringMatching(/bar\.md$/),
+			expect.anything(),
+		);
+	});
+
+	it("writes an MD-only subagent to ~/.claude/agents/ not ~/.claude/skills/", async () => {
+		// mode: subagent is an OpenCode concept — it maps to a Claude subagent
+		// in ~/.claude/agents/, not a skill in ~/.claude/skills/.
+		vi.mocked(readdir).mockResolvedValue(["helper.md"] as never);
+		vi.mocked(readFile).mockImplementation(async (path) => {
+			if (String(path).endsWith("helper.md")) {
+				return "---\nname: helper\ndescription: A helper\nmode: subagent\n---\nbody";
+			}
+			throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+		});
+
+		const adapter = new ClaudeAgentAdapter();
+		await adapter.sync({} as never);
+
+		const writtenPaths = vi
+			.mocked(writeFile)
+			.mock.calls.map((c) => String(c[0]));
+		expect(writtenPaths.some((p) => p.match(/agents\/helper\.md$/))).toBe(true);
+		expect(writtenPaths.some((p) => p.includes("skills/helper"))).toBe(false);
+	});
+
+	it("migrates manifest.skills entries to ~/.claude/agents/ and cleans up ~/.claude/skills/", async () => {
+		// Old manifests had subagents incorrectly written to ~/.claude/skills/.
+		// On first sync after the fix, those skill dirs must be deleted and the
+		// agents must be (re-)written to ~/.claude/agents/.
+		vi.mocked(readdir).mockResolvedValue(["mover.md"] as never);
+		vi.mocked(readFile).mockImplementation(async (path) => {
+			if (String(path).endsWith(".relay-manifest.json")) {
+				return JSON.stringify({ agents: [], skills: ["mover"] });
+			}
+			if (String(path).endsWith("mover.md")) {
+				return "---\nname: mover\ndescription: moved\nmode: subagent\n---\nbody";
+			}
+			throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+		});
+
+		const adapter = new ClaudeAgentAdapter();
+		await adapter.sync({} as never);
+
+		// Old skill dir must be removed
+		expect(vi.mocked(rm)).toHaveBeenCalledWith(
+			expect.stringMatching(/skills\/mover$/),
+			expect.objectContaining({ recursive: true }),
+		);
+		// Agent must be written to ~/.claude/agents/
+		const writtenPaths = vi
+			.mocked(writeFile)
+			.mock.calls.map((c) => String(c[0]));
+		expect(writtenPaths.some((p) => p.match(/agents\/mover\.md$/))).toBe(true);
 	});
 });

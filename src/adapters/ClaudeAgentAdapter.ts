@@ -1,4 +1,11 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	readdir,
+	readFile,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { AGENTS_DIR, SKILLS_DIR } from "../constants/claude.js";
@@ -276,11 +283,9 @@ async function processJsonAgent(
 ): Promise<{
 	name: string;
 	content: string;
-	isSkill: boolean;
 	warnings: string[];
 }> {
 	const name = toKebabCase(rawName);
-	const isSkill = agent.mode === "subagent";
 	const { frontmatter: existing } = parseFrontmatter(existingContent);
 	const warnings: string[] = [];
 
@@ -317,7 +322,6 @@ async function processJsonAgent(
 	return {
 		name,
 		content: renderAgentMd(frontmatter, body),
-		isSkill,
 		warnings: [...fmWarnings, ...warnings],
 	};
 }
@@ -329,15 +333,12 @@ export async function processMdAgent(
 ): Promise<{
 	name: string;
 	content: string;
-	isSkill: boolean;
 	warnings: string[];
 }> {
 	const { frontmatter: sourceFm, body } = parseFrontmatter(sourceContent);
 	// Frontmatter `name:` takes precedence over filename when present.
 	const name = toKebabCase((sourceFm.name as string | undefined) ?? rawName);
 	const { frontmatter: existing } = parseFrontmatter(existingContent);
-
-	const isSkill = sourceFm.mode === "subagent";
 
 	const { frontmatter, warnings } = buildFrontmatter(
 		name,
@@ -350,27 +351,31 @@ export async function processMdAgent(
 		existing,
 	);
 
-	return { name, content: renderAgentMd(frontmatter, body), isSkill, warnings };
+	return { name, content: renderAgentMd(frontmatter, body), warnings };
 }
 
 // ── I/O helpers ───────────────────────────────────────────────────────────────
 
-type Manifest = { agents: string[]; skills: string[] };
+type Manifest = {
+	agents: string[];
+	/** @deprecated subagents were previously written here; used only for migration cleanup */
+	skills?: string[];
+};
 
 async function readManifest(): Promise<Manifest> {
 	try {
 		const raw = await readFile(MANIFEST_PATH, "utf8");
 		return JSON.parse(raw) as Manifest;
 	} catch {
-		return { agents: [], skills: [] };
+		return { agents: [] };
 	}
 }
 
-async function writeManifest(manifest: Manifest): Promise<void> {
+async function writeManifest(agents: string[]): Promise<void> {
 	await mkdir(AGENTS_TARGET_DIR, { recursive: true });
 	await writeFile(
 		MANIFEST_PATH,
-		`${JSON.stringify(manifest, null, 2)}\n`,
+		`${JSON.stringify({ agents }, null, 2)}\n`,
 		"utf8",
 	);
 }
@@ -393,15 +398,9 @@ async function readOpenCodeMdAgents(): Promise<
 	}
 }
 
-async function readExistingTarget(
-	name: string,
-	isSkill: boolean,
-): Promise<string> {
+async function readExistingTarget(name: string): Promise<string> {
 	try {
-		const path = isSkill
-			? join(SKILLS_TARGET_DIR, name, "SKILL.md")
-			: join(AGENTS_TARGET_DIR, `${name}.md`);
-		return await readFile(path, "utf8");
+		return await readFile(join(AGENTS_TARGET_DIR, `${name}.md`), "utf8");
 	} catch {
 		return "";
 	}
@@ -415,21 +414,40 @@ async function writeAgentFile(name: string, content: string): Promise<void> {
 	});
 }
 
-async function writeSkillFile(name: string, content: string): Promise<void> {
-	const dir = join(SKILLS_TARGET_DIR, name);
-	await mkdir(dir, { recursive: true });
-	await writeFile(join(dir, "SKILL.md"), content, {
-		encoding: "utf8",
-		mode: 0o644,
-	});
-}
-
 async function deleteAgentFile(name: string): Promise<void> {
 	await rm(join(AGENTS_TARGET_DIR, `${name}.md`), { force: true });
 }
 
 async function deleteSkillFile(name: string): Promise<void> {
 	await rm(join(SKILLS_TARGET_DIR, name), { recursive: true, force: true });
+}
+
+async function mdSourceExists(name: string): Promise<boolean> {
+	try {
+		await stat(join(OPENCODE_AGENTS_DIR, `${name}.md`));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * From a list of candidates to delete, keep only those that have no
+ * corresponding MD source file in the OpenCode agents directory.
+ *
+ * This prevents data loss when an agent transitions from a jsonc-only entry to
+ * an MD file in the same sync cycle, or when a transient read error causes the
+ * MD processing to silently produce an empty result.
+ */
+async function filterDeletable(candidates: string[]): Promise<string[]> {
+	return (
+		await Promise.all(
+			candidates.map(async (n): Promise<string | null> => {
+				const hasMd = await mdSourceExists(n);
+				return hasMd ? null : n;
+			}),
+		)
+	).filter((n): n is string => n !== null);
 }
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
@@ -466,10 +484,12 @@ export class ClaudeAgentAdapter implements ProviderAdapter<string> {
 
 	/**
 	 * Full sync pipeline:
-	 * 1. Process JSON agents from `opencode.jsonc` (`agent` key).
-	 * 2. Process MD agents from `~/.config/opencode/agents/`.
-	 * 3. Delete previously synced files that are no longer in source.
-	 * 4. Update the relay manifest.
+	 * 1. Migrate: delete any entries previously written to ~/.claude/skills/ by
+	 *    the old (incorrect) subagent routing — they belong in ~/.claude/agents/.
+	 * 2. Process JSON agents from `opencode.jsonc` (`agent` key).
+	 * 3. Process MD agents from `~/.config/opencode/agents/`.
+	 * 4. Delete previously synced agent files that are no longer in any source.
+	 * 5. Update the relay manifest.
 	 */
 	async sync(source: OpenCodeConfig): Promise<void> {
 		if (source.default_agent) {
@@ -479,26 +499,28 @@ export class ClaudeAgentAdapter implements ProviderAdapter<string> {
 		}
 
 		const manifest = await readManifest();
+
+		// ── Migration: clean up incorrectly placed skill files ───────────────────
+		if (manifest.skills?.length) {
+			await Promise.all(manifest.skills.map(deleteSkillFile));
+			console.info(
+				`[relay:agent] Migrated ${manifest.skills.length} subagent(s) from ~/.claude/skills/ to ~/.claude/agents/`,
+			);
+		}
+
 		const newAgents: string[] = [];
-		const newSkills: string[] = [];
 		const processedNames = new Set<string>();
 
 		// ── JSON agents ─────────────────────────────────────────────────────────
 		for (const [rawName, agent] of Object.entries(source.agent ?? {})) {
 			const name = toKebabCase(rawName);
-			const isSkill = agent.mode === "subagent";
-			const existingContent = await readExistingTarget(name, isSkill);
+			const existingContent = await readExistingTarget(name);
 			const result = await processJsonAgent(rawName, agent, existingContent);
 
 			for (const w of result.warnings) console.warn(`[relay:agent] ${w}`);
 
-			if (isSkill) {
-				await writeSkillFile(name, result.content);
-				newSkills.push(name);
-			} else {
-				await writeAgentFile(name, result.content);
-				newAgents.push(name);
-			}
+			await writeAgentFile(name, result.content);
+			newAgents.push(name);
 			processedNames.add(name);
 		}
 
@@ -512,7 +534,6 @@ export class ClaudeAgentAdapter implements ProviderAdapter<string> {
 			const outputName = toKebabCase(
 				(sourceFm.name as string | undefined) ?? rawName,
 			);
-			const isSkill = sourceFm.mode === "subagent";
 
 			if (processedNames.has(outputName)) {
 				console.warn(
@@ -521,7 +542,7 @@ export class ClaudeAgentAdapter implements ProviderAdapter<string> {
 				continue;
 			}
 
-			const existingContent = await readExistingTarget(outputName, isSkill);
+			const existingContent = await readExistingTarget(outputName);
 			const result = await processMdAgent(
 				rawName,
 				sourceContent,
@@ -530,25 +551,20 @@ export class ClaudeAgentAdapter implements ProviderAdapter<string> {
 
 			for (const w of result.warnings) console.warn(`[relay:agent] ${w}`);
 
-			if (result.isSkill) {
-				await writeSkillFile(result.name, result.content);
-				newSkills.push(result.name);
-			} else {
-				await writeAgentFile(result.name, result.content);
-				newAgents.push(result.name);
-			}
+			await writeAgentFile(result.name, result.content);
+			newAgents.push(result.name);
 			processedNames.add(result.name);
 		}
 
 		// ── Deletion ─────────────────────────────────────────────────────────────
-		const removedAgents = manifest.agents.filter((n) => !newAgents.includes(n));
-		const removedSkills = manifest.skills.filter((n) => !newSkills.includes(n));
+		// Guard: skip deletion for entries whose MD source file still exists —
+		// protects against transient read failures and same-cycle jsonc→md
+		// transitions where the file is not yet processed this cycle.
+		const removedAgents = await filterDeletable(
+			manifest.agents.filter((n) => !newAgents.includes(n)),
+		);
+		await Promise.all(removedAgents.map(deleteAgentFile));
 
-		await Promise.all([
-			...removedAgents.map(deleteAgentFile),
-			...removedSkills.map(deleteSkillFile),
-		]);
-
-		await writeManifest({ agents: newAgents, skills: newSkills });
+		await writeManifest(newAgents);
 	}
 }

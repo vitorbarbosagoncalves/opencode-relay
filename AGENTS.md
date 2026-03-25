@@ -53,7 +53,7 @@ Lightweight Node.js daemon that watches `~/.config/opencode/opencode.jsonc` and 
 | `tools: { write: true, bash: false }` object | `tools: "Write"` PascalCase comma-string |
 | `model: "anthropic/claude-sonnet-4-6"` | `model: "sonnet"` (strip prefix, alias) |
 | `model: "openrouter/..."` non-Anthropic | `model: "inherit"` + warn |
-| `mode: "subagent"` | route to `~/.claude/skills/` instead |
+| `mode: "subagent"` | still written to `~/.claude/agents/` — it's a Claude subagent, not a skill |
 | `temperature` | **drop** — invalid in Claude agents; warn |
 | `prompt: "{file:./prompts/x.md}"` | inline file content as body |
 
@@ -69,7 +69,7 @@ Pure file copy — formats are compatible. OpenCode extras (`license`, `compatib
 3. **`temperature` in OpenCode agents**: valid in OpenCode, **crashes Claude** — must be dropped
 4. **`description` required**: Claude Code agents require `description`; OpenCode makes it optional — write `""` + warn rather than omit
 5. **Two agent sources**: both `opencode.jsonc` (`agent` key) and `~/.config/opencode/agents/*.md` must be watched
-6. **`mode: "subagent"` routing**: must go to `~/.claude/skills/`, not `~/.claude/agents/`
+6. **`mode: "subagent"` is still an agent**: goes to `~/.claude/agents/` like any other agent — `~/.claude/skills/` is for user-invocable slash commands, a different concept
 7. **Shared skills dir**: `~/.claude/skills/` is scanned by both tools natively — never use it as a sync *source* or you'll create circular updates
 8. **Home dir**: always use `pathResolver.resolveHome()`, never assume `~` expansion
 9. **Non-destructive merge**: read target file first, spread only the synced keys, preserve Claude-specific fields (`skills`, `permissionMode`, etc.)
