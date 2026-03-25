@@ -6,11 +6,13 @@ import { type ParseError, parse, printParseErrorCode } from "jsonc-parser";
 
 import type { OpenCodeConfig } from "../types/opencode.js";
 import type { Result } from "../types/result.js";
+import { loadEnvFile } from "../utils/envFileLoader.js";
 import { fromHome } from "../utils/pathResolver.js";
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
 const OPENCODE_CONFIG = fromHome(".config/opencode/opencode.jsonc");
+const OPENCODE_ENV_FILE = fromHome(".config/opencode/.env");
 
 const DEBOUNCE_MS = 500;
 
@@ -53,14 +55,20 @@ interface Syncable {
 export class SyncEngine {
 	readonly #adapters: Syncable[];
 	readonly #configPath: string;
+	readonly #envFilePath: string;
 	#watcher: FSWatcher | null = null;
 	#debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	#syncing = false;
 	#syncQueued = false;
 
-	constructor(adapters: Syncable[], configPath: string = OPENCODE_CONFIG) {
+	constructor(
+		adapters: Syncable[],
+		configPath: string = OPENCODE_CONFIG,
+		envFilePath: string = OPENCODE_ENV_FILE,
+	) {
 		this.#adapters = adapters;
 		this.#configPath = configPath;
+		this.#envFilePath = envFilePath;
 	}
 
 	/**
@@ -114,6 +122,20 @@ export class SyncEngine {
 
 		this.#syncing = true;
 		try {
+			const envResult = await loadEnvFile(this.#envFilePath);
+			if (envResult) {
+				if (envResult.loaded.length > 0) {
+					console.info(
+						`[relay:env] Loaded ${envResult.loaded.length} var(s) from ${this.#envFilePath}`,
+					);
+				}
+				if (envResult.skipped.length > 0) {
+					console.info(
+						`[relay:env] Skipped ${envResult.skipped.length} var(s) already set in process env`,
+					);
+				}
+			}
+
 			const { data: source, error } = await readConfig(this.#configPath);
 
 			if (error) {

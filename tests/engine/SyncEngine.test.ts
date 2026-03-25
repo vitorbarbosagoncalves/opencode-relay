@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readConfig, SyncEngine } from "../../src/engine/SyncEngine.js";
 
@@ -54,6 +54,7 @@ describe(readConfig, () => {
 
 describe(SyncEngine, () => {
 	let tmpConfig: string;
+	const NO_ENV_FILE = "/tmp/__missing_env_file_xyz__.env";
 
 	beforeEach(async () => {
 		tmpConfig = join(
@@ -69,6 +70,7 @@ describe(SyncEngine, () => {
 		const engine = new SyncEngine(
 			[{ sync: syncA }, { sync: syncB }],
 			tmpConfig,
+			NO_ENV_FILE,
 		);
 
 		await engine.start();
@@ -81,7 +83,11 @@ describe(SyncEngine, () => {
 
 	it("does not call sync when config cannot be read", async () => {
 		const sync = vi.fn().mockResolvedValue(undefined);
-		const engine = new SyncEngine([{ sync }], "/tmp/__missing_config__.jsonc");
+		const engine = new SyncEngine(
+			[{ sync }],
+			"/tmp/__missing_config__.jsonc",
+			NO_ENV_FILE,
+		);
 
 		await engine.start();
 		await engine.stop();
@@ -90,7 +96,7 @@ describe(SyncEngine, () => {
 	});
 
 	it("stop resolves without error when called before start", async () => {
-		const engine = new SyncEngine([], tmpConfig);
+		const engine = new SyncEngine([], tmpConfig, NO_ENV_FILE);
 		await expect(engine.stop()).resolves.toBeUndefined();
 	});
 
@@ -100,6 +106,7 @@ describe(SyncEngine, () => {
 		const engine = new SyncEngine(
 			[{ sync: syncA }, { sync: syncB }],
 			tmpConfig,
+			NO_ENV_FILE,
 		);
 
 		await expect(engine.start()).resolves.toBeUndefined();
@@ -107,5 +114,27 @@ describe(SyncEngine, () => {
 
 		expect(syncA).toHaveBeenCalledOnce();
 		expect(syncB).toHaveBeenCalledOnce();
+	});
+
+	it("loads env vars from env file before syncing adapters", async () => {
+		const TEST_KEY = "RELAY_ENGINE_TEST_ENV_KEY_XYZ";
+		const tmpEnv = join(
+			tmpdir(),
+			`opencode-relay-engine-env-${Date.now()}.env`,
+		);
+		await writeFile(tmpEnv, `${TEST_KEY}=from_env_file`, "utf8");
+
+		let capturedEnv: string | undefined;
+		const sync = vi.fn().mockImplementation(() => {
+			capturedEnv = process.env[TEST_KEY];
+			return Promise.resolve();
+		});
+
+		const engine = new SyncEngine([{ sync }], tmpConfig, tmpEnv);
+		await engine.start();
+		await engine.stop();
+
+		expect(capturedEnv).toBe("from_env_file");
+		delete process.env[TEST_KEY];
 	});
 });
